@@ -1,7 +1,7 @@
 #!/usr/bin/env python3
 # -*- coding: utf-8 -*-
 """
-Created on Wed Nov  8 09:46:37 2017
+Created on Tue Nov 21 10:43:30 2017
 
 @author: aatina
 """
@@ -90,7 +90,7 @@ ax3.imshow(im2,cmap="gray")
 x=im2
 y=im2
 
-w = np.array([[1.414,1,1.414],[1,1,1],[1.414,1,1.414]])
+#w = np.array([[1.414,1,1.414],[1,1,1],[1.414,1,1.414]])
 
 def threshold(img):
     for i in range(img.shape[0]):
@@ -110,66 +110,115 @@ def inv_convert(matrix):
                 matrix[i,j] = 0
     return matrix
 
+def convert(matrix):
+    for i in range(matrix.shape[0]):
+        for j in range(matrix.shape[1]):
+            if(matrix[i,j] == 1):
+                matrix[i,j] = 1
+            else:
+                matrix[i,j] = 0
+    return matrix
+
 threshold(x)
 threshold(y)
 
-def likelihood(x):
-    joint_prob = 0
-    for i in range(x.shape[0]):
-        for j in range(x.shape[1]):
-            neigh = neighbours(i,j,x.shape[0], x.shape[1])
-            sum_neigh = 0
-            for n in neigh:
-                w_0 = n[0] - (i-1)
-                w_1 = n[1] - (j-1)
-                sum_neigh = (sum_neigh + x[n])*w[(w_0, w_1)]
-                
-            joint_prob += x[i,j]*sum_neigh + (x[i,j]+y[i,j])**2 
-    return joint_prob
+height, width = x.shape
+initial_static = np.random.rand(height,width)
 
+x0 = threshold(initial_static)
 
-def prob(x):
-    result = np.zeros(x.shape)
-    for t in range(0,5):
-        for i in range(x.shape[0]):
-            for j in range(x.shape[1]):
-#                print("i = ",i)
-#                print("j = ", j)
-                
-                original = x[i, j]
-                
-                x[i,j] = 1
-#                print (x)
-                x_prob = likelihood(x)
-#                print("x_prob = " , x_prob)
-                
-                x[i,j] = -1
-#                print (x)
-                x_minus_prob = likelihood(x)
-#                print("x_minus_prob = " , x_minus_prob)
-#                print("")
-                
-                x[i, j] = original
-                
-                if(x_prob > x_minus_prob):
-                    result[i,j] = 1
+imsave('x0.jpg', x0)
+
+def gibbs_sampling(x,y):
+    for t in range(0,10):
+        for i in range(height):
+            for j in range(width):
+                x0[i,j] = 1
+                prob = joint_prob(x0,y,i,j)
+                x0[i,j] = -1
+                p = prob/(prob + joint_prob(x0,y,i,j))
+                uniform_val = np.random.uniform(0,1)
+                #print (prob, uniform_val)
+                if p > uniform_val:
+                    x0[i,j] = 1
                 else:
-                    result[i,j] = -1
-        x = result
-    return result
+                    x0[i,j] = -1
+    return x0
 
 
-result = prob(x)
+def gibbs_sampling_rand(x,y):
+    
+    np.random.seed(42)
+    for t in range(0,15):
+        for i in range(height):
+            for j in range(width):
+                index_i = np.random.randint(0,height)
+                index_j = np.random.randint(0,width)
+                #print(index_i,index_j)
+                x0[index_i,index_j] = 1
+                prob = joint_prob(x0,y,index_i,index_j)
+                x0[index_i,index_j] = -1
+                p = prob/(prob + joint_prob(x0,y,index_i,index_j))
+                uniform_val = np.random.uniform(0,1)
+                #print (prob, uniform_val)
+                if p > uniform_val:
+                    x0[index_i,index_j] = 1
+                else:
+                    x0[index_i,index_j] = -1
+    return x0
 
+def get_prior(x,i,j):
+    (height, width) = x.shape
+    accumulation_pos = 0
+    accumulation_neg = 0
+    cur_pos_sum = 0
+    cur_neg_sum = 0
+    prior_sum = 0 
+    w = 1
+    neigh = neighbours(i, j, height, width)
+    
+    for n in neigh:
+        cur_pos_sum += (w * 1 * x[n])
+        cur_neg_sum += (w * -1 * x[n])
+        prior_sum += (w * x[i,j] * x[n])
+    
+    accumulation_pos += cur_pos_sum # Add that to the previous neighbours' things
+    accumulation_neg += cur_neg_sum
+    
+    e_pos = np.exp(accumulation_pos)
+    e_neg = np.exp(accumulation_neg)
+    e_prior = np.exp(prior_sum)
+    
+    z_val = e_pos + e_neg
+    
+    prior = e_prior/z_val
+    
+    return prior
+
+def get_likelihood(x, y, i, j):
+    w = 2.1 
+    pos_val = 1 * y[i,j] * w
+    neg_val = -1 * y[i,j] * w
+    exp_val = np.exp(pos_val) + np.exp(neg_val)
+    val = np.exp(x[i,j] * y[i,j] * w)
+    
+    likelihood = val/ exp_val
+    
+    return likelihood
+    
+
+def joint_prob(x,y,i,j):
+    prior = get_prior(x,i,j)
+    likelihood = get_likelihood(x,y,i,j)
+    posterior = prior * likelihood
+    return posterior
+    
+result = gibbs_sampling_rand(x,y)
 inv_convert(result)
                     
-imsave('obama_icm.jpg', result)
-
-
-
-
-
-
-
-
-
+imsave('obama_gibbs_random_15.jpg', result)
+    
+    
+    
+    
+    
